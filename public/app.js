@@ -112,7 +112,18 @@ function renderFiles(files) {
     const name = document.createElement('span'); name.className = 'file-name'; name.textContent = file.name;
     const button = document.createElement('button'); button.className = 'button secondary'; button.textContent = 'Show'; button.setAttribute('aria-label', `Show ${file.name}`);
     button.addEventListener('click', () => showFile(file));
-    row.append(icon, name, button); $('file-list').append(row);
+    row.append(icon, name, button);
+    if (file.type === 'powerpoint') {
+      const animated = document.createElement('button'); animated.className = 'button secondary'; animated.textContent = 'Play animations'; animated.setAttribute('aria-label', `Play animations in ${file.name}`);
+      animated.addEventListener('click', () => withButton(animated, async () => {
+        await api('/api/open-file', { id: file.id });
+        $('window-options').open = true;
+        $('source-status').textContent = 'PowerPoint slideshow opened. Click Choose window and select the slideshow picture.';
+        notice('PowerPoint slideshow opened. Click Choose window and select the slideshow picture.');
+      }));
+      row.append(animated);
+    }
+    $('file-list').append(row);
   });
 }
 function renderState(next) {

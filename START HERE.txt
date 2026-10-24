@@ -21,6 +21,10 @@ CHOOSE YOUR CONTENT ONCE
   while PowerPoint prepares the slides. They appear directly with captions,
   using the same Previous and Next controls. No second selection or window picker.
   This uses static slides: animations, transitions, video, and audio do not play.
+  To play animations, click Play animations beside the uploaded PowerPoint,
+  then expand Other windows and click Choose window. Select the slideshow
+  picture, not the PowerPoint editing window. Click the slideshow window once
+  before using a clicker; Windows sends clicker keys to the active window.
   For older .ppt/.pps files, save a .pptx or PDF copy in PowerPoint first.
   If a deck links to external media or data, embed those items or export a PDF.
 - Website: Enter its address and click Show website. The desktop app opens

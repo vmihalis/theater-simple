@@ -17,11 +17,11 @@ Windows 11 x64 is the tested platform. The release includes Node.js, Electron, a
 | Content | How it works |
 | --- | --- |
 | PDF | Select once. Use **Previous** / **Next** in the app. |
-| PowerPoint | Select `.pptx` or `.ppsx` once. Installed, activated **Microsoft PowerPoint** exports static slides locally; use the same page controls. |
+| PowerPoint | Select `.pptx` or `.ppsx` once. **Show** uses static slides. **Play animations** opens a native slideshow; click **Choose window** and select the slideshow picture. |
 | Website | Enter its address once. The desktop app opens one website window and automatically captures it. Use **Browse website** to click and scroll there; the projector follows the same page. |
 | Another app or a remote Zoom presenter | Expand **Other windows**, then explicitly choose the presentation window. |
 
-PowerPoint animations, transitions, video, and audio do **not** play in the direct-file route. Save older `.ppt` / `.pps` files as `.pptx` or PDF first. Decks linking to external media or data must be made self-contained or exported to PDF. Animated slides can use the original PowerPoint window through **Other windows** instead.
+The static **Show** route does not play animations, transitions, video, or audio. **Play animations** requires installed, activated Microsoft PowerPoint on the same Windows PC. It uses the original PowerPoint slideshow and the app's window chooser, so choose the slideshow thumbnail rather than the PowerPoint editing window. Keep the slideshow open and unminimized. Click the PowerPoint slideshow window once before using a clicker; its keys go to the active Windows window. Save older `.ppt` / `.pps` files as `.pptx` or PDF first. Decks linking to external media or data must be made self-contained or exported to PDF.
 
 The website window has its own browser session. Existing Edge logins are not imported. Some pop-up login flows, DRM, or other browser features may need the ordinary browser plus manual window capture. Automatic website capture works in the desktop app, not in a normal browser tab. Picture capture does not carry website or presentation audio.
 
