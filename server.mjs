@@ -32,7 +32,8 @@ const byName=(a,b)=>a.name.localeCompare(b.name,'en',{numeric:true,sensitivity:'
 const state=()=>({app:'theater-simple',version:APP_VERSION,captions:{...captions,hasKey:!!apiKey},settings:{targetLanguage:config.targetLanguage,sourceLanguages:config.sourceLanguages},files:[...config.files].sort(byName).map(publicFile)});
 function removeFile(file){
   if(preparing.has(file.id))throw new Error(`${file.name} is still being prepared. Try again in a moment.`);
-  for(const target of [path.join(uploads,file.filename),path.join(prepared,file.id+'.pdf')]){
+  // Keep the original available if a later deletion fails; a missing prepared PDF can be rebuilt.
+  for(const target of [path.join(prepared,file.id+'.pdf'),path.join(uploads,file.filename)]){
     try{fs.rmSync(target);}catch(error){if(error.code!=='ENOENT')throw new Error(`${file.name} is still open. Close it in PowerPoint or stop showing it, then remove it again.`);}
   }
   config.files=config.files.filter(f=>f.id!==file.id);save();
@@ -126,8 +127,14 @@ const server=http.createServer(async(req,res)=>{
           const file=config.files.find(f=>f.id===data.id);if(!file)throw new Error('Presentation not found. It may already be removed.');
           removeFile(file);break;
         }
-        case '/api/clear-files':
-          for(const file of [...config.files].sort(byName))removeFile(file);break;
+        case '/api/clear-files':{
+          const files=[...config.files].sort(byName);
+          const busy=files.find(file=>preparing.has(file.id));
+          if(busy)throw new Error(`${busy.name} is still being prepared. Try again in a moment.`);
+          try{for(const file of files)removeFile(file);}
+          catch(error){broadcast();return json(res,{error:error.message,state:state()},400);}
+          break;
+        }
         default:return json(res,{error:'Unknown action.'},404);
       }
       broadcast();return json(res,{ok:true,state:state()});

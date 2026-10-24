@@ -1,6 +1,6 @@
 {
   "name": "theater-simple-desktop",
-  "version": "1.4.3",
+  "version": "1.4.4-qa.1",
   "private": true,
   "main": "main.cjs",
   "description": "Theater Simple desktop presentation window",

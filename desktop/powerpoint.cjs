@@ -9,7 +9,7 @@ const { createInterface } = require('node:readline');
 class PowerPointShow {
   constructor({ origin, directory, spawnWorker = spawn, fetchFile = fetch }) {
     Object.assign(this, { origin, directory, spawnWorker, fetchFile });
-    this.closed = false; this.pending = new Map(); this.sequence = 0;
+    this.closed = false; this.commandUncertain = false; this.statusQuarantined = false; this.pending = new Map(); this.sequence = 0;
   }
   async start(id) {
     if (typeof id !== 'string' || !/^[a-zA-Z0-9-]{1,80}$/.test(id)) throw new Error('Choose a saved PowerPoint file.');
@@ -30,7 +30,9 @@ class PowerPointShow {
     if (this.closed) throw new Error('Presentation opening cancelled.');
     await fs.mkdir(this.directory, { recursive: true });
     this.temporary = await fs.mkdtemp(path.join(this.directory, 'show-'));
-    const input = path.join(this.temporary, 'Presentation.pptx');
+    // Give the private copy a unique name so its slideshow can be identified
+    // without confusing it with another PowerPoint user's window.
+    const input = path.join(this.temporary, `Theater-${path.basename(this.temporary)}.pptx`);
     await fs.writeFile(input, Buffer.concat(chunks));
     if (this.closed) { await this.cleanup(); throw new Error('Presentation opening cancelled.'); }
     this.child = this.spawnWorker('powershell.exe', ['-NoProfile', '-STA', '-ExecutionPolicy', 'Bypass', '-File', path.resolve(__dirname, '../run-slideshow.ps1'), '-PresentationPath', input], { windowsHide: true, stdio: ['pipe', 'pipe', 'pipe'] });
@@ -44,7 +46,11 @@ class PowerPointShow {
         const request = this.pending.get(value.id);
         if (!request) return;
         this.pending.delete(value.id);
-        if (value.error) request.reject(new Error(value.error)); else request.resolve(value);
+        if (value.error) {
+          const error = new Error(value.error);
+          error.uncertain = value.uncertain === true;
+          request.reject(error);
+        } else request.resolve(value);
       });
       const fail = () => {
         for (const request of this.pending.values()) request.reject(new Error('PowerPoint slideshow closed. Choose the file again to restart it.'));
@@ -64,11 +70,40 @@ class PowerPointShow {
   }
   async command(action) {
     if (!['next', 'previous', 'focus', 'status'].includes(action)) throw new Error('Unknown slideshow action.');
+    if (this.commandUncertain) throw new Error('PowerPoint did not confirm the last click. Restart this slideshow before using the clicker.');
     if (this.closed || !this.hwnd || !this.child?.stdin.writable) throw new Error('Choose a PowerPoint file to start its slideshow.');
+    if (action === 'status' && this.statusQuarantined) throw new Error('PowerPoint is still working on a previous status check.');
+    const navigation = action === 'next' || action === 'previous';
+    const timeoutMessage = navigation
+      ? 'PowerPoint did not confirm the last click. Restart this slideshow before using the clicker.'
+      : 'PowerPoint is busy. Check its slideshow window.';
     const id = ++this.sequence;
-    const response = new Promise((resolve, reject) => { this.pending.set(id, { resolve, reject }); });
+    let replied = false;
+    const response = new Promise((resolve, reject) => {
+      this.pending.set(id, {
+        resolve(value) { replied = true; resolve(value); },
+        reject(error) { replied = true; reject(error); },
+      });
+    });
     this.child.stdin.write(JSON.stringify({ id, action }) + '\n');
-    try { return await this.withTimeout(response, 10000, 'PowerPoint is busy. Check its slideshow window.'); }
+    try {
+      const result = await this.withTimeout(response, navigation ? 40000 : 10000, timeoutMessage);
+      if (action !== 'status') this.statusQuarantined = false;
+      return result;
+    }
+    catch (error) {
+      // A timed-out status may still run later. Do not queue more polls ahead of
+      // the operator's next click; resume polling after a command gets a reply.
+      if (action === 'status' && !replied) this.statusQuarantined = true;
+      if (action !== 'status' && replied && !error.uncertain) this.statusQuarantined = false;
+      // Office may complete an in-flight COM call after our deadline. Refuse a
+      // second click on this session rather than unexpectedly skipping a slide.
+      if (navigation && (error.uncertain || error.message === timeoutMessage)) {
+        this.commandUncertain = true;
+        throw new Error(timeoutMessage);
+      }
+      throw error;
+    }
     finally { this.pending.delete(id); }
   }
   async cleanup() {

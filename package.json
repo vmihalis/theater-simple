@@ -1,6 +1,6 @@
 {
   "name": "theater-simple",
-  "version": "1.4.3",
+  "version": "1.4.4-qa.1",
   "private": true,
   "type": "module",
   "description": "Portable Windows presentation and translated-caption control, without OBS",

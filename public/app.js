@@ -27,6 +27,8 @@ let pdfReady = false;
 let powerPointName = '';
 let powerPointBusy = false;
 let powerPointPosition = null;
+let nativePowerPoint = null;
+let powerPointStatusInFlight = null;
 const program = createProgram({ program: $('program'), video: $('preview-video'), pdfCanvas: $('preview-pdf'), camera: $('preview-camera'), placeholder: $('preview-placeholder'), captions: $('preview-captions'), text: $('preview-caption-text'), onPdfStatus(value) {
   if (!pdf) return;
   pdfPageCount = value.pageCount || 0;
@@ -133,13 +135,26 @@ async function removeFile(file) {
 }
 // A removed presentation must leave the preview and projector as well.
 function forgetShown(ids) {
-  if (!pdf || !ids.includes(pdf.id)) return;
-  contentGeneration++; pdf = null; pdfReady = false; pdfPageCount = 0;
-  $('pdf-page-status').textContent = '';
-  publish(); updateButtons();
+  const removedPdf = pdf && ids.includes(pdf.id);
+  const removedNative = nativePowerPoint && ids.includes(nativePowerPoint.id) ? nativePowerPoint : null;
+  if (!removedPdf && !removedNative) return;
+  contentGeneration++;
+  if (removedNative) {
+    sourceGeneration++;
+    choosingSource = false;
+    nativePowerPoint = null;
+    detachPowerPointSource();
+    if (removedNative.token) window.theaterDesktop.closePowerPoint(removedNative.token).catch(() => {});
+    $('source-status').textContent = 'PowerPoint removed. Choose another presentation to continue.';
+    $('content-status').hidden = true;
+  }
+  if (removedPdf) { pdf = null; pdfReady = false; pdfPageCount = 0; $('pdf-page-status').textContent = ''; }
+  publish();
 }
 function renderState(next) {
   if (!next || next.app !== 'theater-simple') throw new Error('This is not the Theater Simple server.');
+  const available = new Set((next.files || []).map(file => file.id));
+  forgetShown([pdf?.id, nativePowerPoint?.id].filter(id => id && !available.has(id)));
   state = next;
   $('app-version').textContent = state.version ? `THEATER SIMPLE ${state.version}` : 'THEATER SIMPLE';
   renderFiles(state.files || []);
@@ -174,6 +189,7 @@ async function showFile(file) {
 function detachPowerPointSource() {
   if (sourceKind !== 'powerpoint') return;
   const previous = source;
+  nativePowerPoint = null;
   source = null; sourceKind = null; powerPointName = ''; powerPointPosition = null; powerPointBusy = false;
   stopTracks(previous);
   publish();
@@ -184,13 +200,16 @@ async function showPowerPoint(file, generation) {
   // Opening another native show closes the old one, even if the new file fails.
   // Retire its picture first so its queued ended event cannot affect a replacement.
   detachPowerPointSource();
+  const native = { id: file.id, token: null };
+  nativePowerPoint = native;
   let selected, nativeSession;
   try {
     const opened = await window.theaterDesktop.openPowerPoint(file.id);
     nativeSession = opened.token;
-    if (generation !== contentGeneration || sourceToken !== sourceGeneration) { await window.theaterDesktop.closePowerPoint(nativeSession); return; }
+    native.token = nativeSession;
+    if (generation !== contentGeneration || sourceToken !== sourceGeneration || nativePowerPoint !== native) { await window.theaterDesktop.closePowerPoint(nativeSession); return; }
     selected = await navigator.mediaDevices.getDisplayMedia({ video: { frameRate: { ideal: 30, max: 30 } }, audio: false });
-    if (generation !== contentGeneration || sourceToken !== sourceGeneration) { stopTracks(selected); await window.theaterDesktop.closePowerPoint(nativeSession); return; }
+    if (generation !== contentGeneration || sourceToken !== sourceGeneration || nativePowerPoint !== native) { stopTracks(selected); await window.theaterDesktop.closePowerPoint(nativeSession); return; }
     const track = selected.getVideoTracks()[0];
     if (!track || track.readyState !== 'live') throw new Error('PowerPoint picture did not connect.');
     stopTracks(source); source = selected; sourceKind = 'powerpoint'; powerPointName = file.name; powerPointPosition = null;
@@ -215,21 +234,29 @@ async function showPowerPoint(file, generation) {
     if (generation === contentGeneration && sourceToken === sourceGeneration) {
       throw new Error(detail || error.message || 'Could not open the PowerPoint slideshow.');
     }
-  } finally { if (sourceToken === sourceGeneration) { choosingSource = false; updateButtons(); } }
+  } finally {
+    if (nativePowerPoint === native && sourceKind !== 'powerpoint') nativePowerPoint = null;
+    if (sourceToken === sourceGeneration) { choosingSource = false; updateButtons(); }
+  }
 }
 async function updatePowerPointPosition() {
-  if (sourceKind !== 'powerpoint' || powerPointBusy) return;
-  const current = source;
+  if (sourceKind !== 'powerpoint' || powerPointBusy || !nativePowerPoint || powerPointStatusInFlight === nativePowerPoint) return;
+  const current = source, native = nativePowerPoint;
+  powerPointStatusInFlight = native;
   try {
     const result = await window.theaterDesktop.powerPointCommand('status');
-    if (source === current && sourceKind === 'powerpoint') { powerPointPosition = result; publish(); }
+    if (source === current && nativePowerPoint === native && sourceKind === 'powerpoint') { powerPointPosition = result; publish(); }
   } catch { /* The capture-ended event handles a closed slideshow. */ }
+  finally { if (powerPointStatusInFlight === native) powerPointStatusInFlight = null; }
 }
 setInterval(updatePowerPointPosition, 1500);
 async function advancePowerPoint(delta) {
   if (powerPointBusy || sourceKind !== 'powerpoint') return;
   powerPointBusy = true; updateButtons(); const current = source;
-  try { const result = await window.theaterDesktop.powerPointCommand(delta > 0 ? 'next' : 'previous'); if (source === current) powerPointPosition = result; }
+  try {
+    const result = await window.theaterDesktop.powerPointCommand(delta > 0 ? 'next' : 'previous');
+    if (source === current) powerPointPosition = result.positionUnknown ? null : result;
+  }
   catch (error) { if (source === current) notice(error.message, true); }
   finally { if (source === current) { powerPointBusy = false; publish(); } }
 }
@@ -237,6 +264,7 @@ $('focus-powerpoint').addEventListener('click', () => window.theaterDesktop.powe
 
 function showPdf(file) {
   sourceGeneration++; choosingSource = false;
+  nativePowerPoint = null;
   stopTracks(source); source = null; sourceKind = null;
   window.theaterDesktop?.closeWebsite().catch(() => {});
   window.theaterDesktop?.closePowerPoint?.().catch(() => {});
@@ -289,6 +317,7 @@ $('website-form').addEventListener('submit', async event => {
     choosingSource = true; updateButtons();
     notice('Opening website…');
     detachPowerPointSource();
+    nativePowerPoint = null;
     await window.theaterDesktop.openWebsite(url.href);
     if (generation !== sourceGeneration) return;
     selected = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: false });
@@ -369,7 +398,7 @@ $('choose-source').addEventListener('click', async () => {
     if (generation === sourceGeneration) notice(error.name === 'NotAllowedError' || error.name === 'AbortError' ? (source || pdf ? 'Window selection cancelled. Your previous presentation is still connected.' : 'No window selected. Choose window when ready.') : error.message, !['NotAllowedError', 'AbortError'].includes(error.name));
   } finally { if (generation === sourceGeneration) { choosingSource = false; updateButtons(); } }
 });
-$('stop-source').addEventListener('click', () => { sourceGeneration++; contentGeneration++; choosingSource = false; stopTracks(source); source = null; sourceKind = null; window.theaterDesktop?.closePowerPoint?.().catch(() => {}); $('source-status').textContent = 'Presentation picture stopped. Choose a window to resume.'; publish(); });
+$('stop-source').addEventListener('click', () => { sourceGeneration++; contentGeneration++; choosingSource = false; nativePowerPoint = null; stopTracks(source); source = null; sourceKind = null; window.theaterDesktop?.closePowerPoint?.().catch(() => {}); $('source-status').textContent = 'Presentation picture stopped. Choose a window to resume.'; publish(); });
 document.querySelectorAll('[data-mode]').forEach(button => button.addEventListener('click', () => { mode = button.dataset.mode; publish(); }));
 $('open-projector').addEventListener('click', () => {
   if (stageWindow && !stageWindow.closed) { try { if (stageWindow.location.origin === location.origin) { stageWindow.focus(); publish(); return; } } catch {} }

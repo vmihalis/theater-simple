@@ -124,6 +124,16 @@ Use one extracted copy per PC at a time.
 
 TEST CONTENT
 On the PC with activated PowerPoint:
+Open PowerShell in this extracted app folder and run the picture test first:
+  & '.\runtime\electron\electron.exe' '.\tests\powerpoint-capture-live.cjs'
+It opens only the bundled test deck and checks that Electron's captured
+picture changes for both animations and the next slide. Expect five PASS
+lines in powerpoint-picture-test.log in this folder. If it reports FAIL,
+do not use this version live. The test needs no server, Soniox key, Zoom
+meeting, or microphone.
+Copy the complete FAIL line, including any Details step and 0x error code,
+when reporting a failure. Also report the installed PowerPoint version.
+
 1. Click Choose file and select tests/fixtures/animation-rehearsal.pptx
    inside this app folder.
 2. Click Next once: the first animated line should appear on slide 1.

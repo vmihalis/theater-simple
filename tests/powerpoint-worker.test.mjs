@@ -45,7 +45,7 @@ test('slideshow worker passes validation messages through unchanged', {skip: !wi
   assert.doesNotMatch(reply.error, /Details: step/);
 });
 
-test('slideshow worker window helper lists top-level windows with class and visibility', {skip: !windows && 'Windows only'}, async () => {
+test('slideshow worker window helper lists top-level windows with class, visibility and title', {skip: !windows && 'Windows only'}, async () => {
   // Compiles the same C# the worker uses, taken from its source, and lists this session's windows.
   const script = `
 $ErrorActionPreference = 'Stop'
@@ -59,5 +59,33 @@ $ids = [int[]]@(Get-Process | ForEach-Object { $_.Id })
   assert.equal(result.status, 0, result.stderr);
   const lines = result.stdout.split(/\r?\n/).filter(Boolean);
   assert.ok(lines.length > 0, `No windows listed. stderr: ${result.stderr}`);
-  for (const line of lines) assert.match(line, /^\d+\|[^|]*\|[01]$/);
+  for (const line of lines) {
+    assert.match(line, /^\d+\|[^|]*\|[01]\|[A-Za-z0-9+/]*={0,2}$/);
+    const encodedTitle = line.split('|')[3];
+    assert.equal(Buffer.from(encodedTitle, 'base64').toString('utf8').includes('\uFFFD'), false);
+  }
+});
+
+test('slideshow worker selects only an unambiguous window named for its private deck', {skip: !windows && 'Windows only'}, async () => {
+  // Evaluate the worker's actual selection function with competing PowerPoint windows.
+  const script = `
+$ErrorActionPreference = 'Stop'
+$ast = [System.Management.Automation.Language.Parser]::ParseFile('${path.join(root, 'run-slideshow.ps1').replace(/'/g, "''")}', [ref]$null, [ref]$null)
+$function = $ast.FindAll({ param($node) $node -is [System.Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq 'Find-OwnedSlideshowWindow' }, $true) | Select-Object -First 1
+Invoke-Expression $function.Extent.Text
+$windows = @(
+  [pscustomobject]@{Handle=100; Class='screenClass'; Visible=$true; Title='PowerPoint Slide Show - Other deck'},
+  [pscustomobject]@{Handle=200; Class='screenClass'; Visible=$true; Title='PowerPoint Slide Show - Theater-show-abc'},
+  [pscustomobject]@{Handle=300; Class='#32770'; Visible=$true; Title='Theater-show-abc dialog'},
+  [pscustomobject]@{Handle=400; Class='screenClass'; Visible=$true; Title='Theater-show-abc old'}
+)
+$selected = Find-OwnedSlideshowWindow $windows @(400) 'Theater-show-abc'
+if ($selected -ne 200) { throw "Selected wrong window: $selected" }
+try { Find-OwnedSlideshowWindow @($windows[0], $windows[2]) @() 'Theater-show-abc' | Out-Null; throw 'Selected an unrelated window' }
+catch { if ($_.Exception.Message -eq 'Selected an unrelated window') { throw } }
+try { Find-OwnedSlideshowWindow @($windows[1], $windows[3]) @() 'Theater-show-abc' | Out-Null; throw 'Selected an ambiguous window' }
+catch { if ($_.Exception.Message -eq 'Selected an ambiguous window') { throw } }
+`;
+  const result = spawnSync('powershell.exe', ['-NoProfile', '-STA', '-ExecutionPolicy', 'Bypass', '-Command', '-'], {input: script, encoding: 'utf8', windowsHide: true});
+  assert.equal(result.status, 0, `stdout: ${result.stdout}\nstderr: ${result.stderr}`);
 });

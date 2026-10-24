@@ -50,6 +50,14 @@ If a slideshow fails to start, the message ends with **Details:** naming the ste
 & '.\runtime\node.exe' tests\powerpoint-live.windows.mjs tests\fixtures\animation-rehearsal.pptx
 ```
 
+To check the actual picture captured by Electron as each animation plays, run this separate test on the licensed PC from the extracted app folder in PowerShell:
+
+```powershell
+& '.\runtime\electron\electron.exe' '.\tests\powerpoint-capture-live.cjs'
+```
+
+It opens only the bundled test deck, matches the slideshow window exactly, checks that its captured picture changes after two reveals and a slide advance, then closes its copy. Read `powerpoint-picture-test.log` in the app folder afterward: expect five `PASS` lines and no `FAIL`. It needs no local server, microphone, Zoom meeting, or Soniox key. If it says `FAIL`, copy the complete `FAIL` line, including any `Details:` step and `0x...` PowerPoint error code, and report which version of PowerPoint is installed. Do not use that version for a live presentation. This automated check does not test the projector, physical clicker, or Zoom; complete the rehearsal above on the actual event equipment.
+
 Save older `.ppt` / `.pps` files as `.pptx` or PDF first. Decks linking to external media or data must be made self-contained or exported to PDF. Macros and ActiveX controls are not supported. Embedded video picture can play through PowerPoint, but audio is not included in Theater Simple's picture capture; route and test presentation audio separately. Browser-only mode retains the static PowerPoint conversion and does not play animations.
 
 The website window has its own browser session. Existing Edge logins are not imported. Some pop-up login flows, DRM, or other browser features may need the ordinary browser plus manual window capture. Automatic website capture works in the desktop app, not in a normal browser tab. Picture capture does not carry website or presentation audio.

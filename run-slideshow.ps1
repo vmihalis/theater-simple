@@ -9,6 +9,7 @@ $previousAlerts = $null
 $restoreSettings = $false
 $busyRetry = $false
 $nativeHelpers = $false
+$nativeHelperError = ''
 $windowsBefore = @()
 $stage = 'validate'
 function Reply($value) { [Console]::WriteLine(($value | ConvertTo-Json -Compress)); [Console]::Out.Flush() }
@@ -45,6 +46,8 @@ namespace TheaterSimple {
         [DllImport("user32.dll")] static extern uint GetWindowThreadProcessId(IntPtr window, out uint processId);
         [DllImport("user32.dll")] static extern bool IsWindowVisible(IntPtr window);
         [DllImport("user32.dll", CharSet = CharSet.Unicode)] static extern int GetClassName(IntPtr window, StringBuilder name, int capacity);
+        [DllImport("user32.dll", CharSet = CharSet.Unicode)] static extern int GetWindowTextLength(IntPtr window);
+        [DllImport("user32.dll", CharSet = CharSet.Unicode)] static extern int GetWindowText(IntPtr window, StringBuilder text, int capacity);
         public static string[] List(int[] processIds) {
             var owners = new HashSet<uint>();
             foreach (var id in processIds) owners.Add((uint)id);
@@ -55,7 +58,10 @@ namespace TheaterSimple {
                 if (owners.Contains(owner)) {
                     var name = new StringBuilder(256);
                     GetClassName(window, name, name.Capacity);
-                    found.Add(window.ToInt64() + "|" + name + "|" + (IsWindowVisible(window) ? "1" : "0"));
+                    var title = new StringBuilder(Math.Min(GetWindowTextLength(window) + 1, 4096));
+                    if (title.Capacity > 1) GetWindowText(window, title, title.Capacity);
+                    var encodedTitle = Convert.ToBase64String(Encoding.UTF8.GetBytes(title.ToString()));
+                    found.Add(window.ToInt64() + "|" + name + "|" + (IsWindowVisible(window) ? "1" : "0") + "|" + encodedTitle);
                 }
                 return true;
             };
@@ -85,8 +91,18 @@ function Get-PowerPointWindows {
     if ($ids.Count -eq 0) { return @() }
     return @([TheaterSimple.TopWindows]::List([int[]]$ids) | ForEach-Object {
         $parts = $_.Split('|')
-        [pscustomobject]@{ Handle = [int64]$parts[0]; Class = $parts[1]; Visible = ($parts[2] -eq '1') }
+        [pscustomobject]@{ Handle = [int64]$parts[0]; Class = $parts[1]; Visible = ($parts[2] -eq '1'); Title = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($parts[3])) }
     })
+}
+function Find-OwnedSlideshowWindow($windows, $existing, [string]$name) {
+    # Windows from other presentations, editor windows and Office dialogs must
+    # never become the projector picture, even if they appeared at the same time.
+    $newShows = @($windows | Where-Object { $_.Visible -and $_.Class -eq 'screenClass' -and ($existing -notcontains $_.Handle) })
+    $owned = @($newShows | Where-Object { $_.Title -and $_.Title.IndexOf($name, [StringComparison]::OrdinalIgnoreCase) -ge 0 })
+    if ($owned.Count -eq 1) { return $owned[0].Handle }
+    if ($owned.Count -gt 1) { throw 'PowerPoint opened multiple matching slideshow windows.' }
+    if ($newShows.Count -eq 0) { throw 'PowerPoint did not report a new slideshow window.' }
+    throw 'PowerPoint opened a slideshow window, but it could not be matched to this presentation.'
 }
 function Get-SlideshowWindowHandle {
     $handle = $null
@@ -94,12 +110,11 @@ function Get-SlideshowWindowHandle {
     # dispatch number differs between versions. Ask PowerPoint for it by name instead.
     try { $handle = $show.GetType().InvokeMember('HWND', [Reflection.BindingFlags]::GetProperty, $null, $show, $null) } catch {}
     if (-not $handle) {
-        # Otherwise take the visible PowerPoint window that appeared when this show started.
-        $new = @(Get-PowerPointWindows | Where-Object { $_.Visible -and ($windowsBefore -notcontains $_.Handle) })
-        $preferred = @($new | Where-Object { $_.Class -eq 'screenClass' })
-        if ($preferred.Count -gt 0) { $new = $preferred }
-        if ($new.Count -eq 0) { throw 'PowerPoint did not report its slideshow window.' }
-        $handle = $new[0].Handle
+        if (-not $nativeHelpers) { throw "PowerPoint window inspection could not start: $nativeHelperError" }
+        # The private copy has a unique basename, so its window title identifies
+        # the show even when another PowerPoint instance starts concurrently.
+        $name = [IO.Path]::GetFileNameWithoutExtension($PresentationPath)
+        $handle = Find-OwnedSlideshowWindow (Get-PowerPointWindows) $windowsBefore $name
     }
     return ([uint64]([int64]$handle -band 0xffffffff)).ToString()
 }
@@ -121,7 +136,7 @@ try {
         Add-Type -TypeDefinition $filterSource -Language CSharp
         $nativeHelpers = $true
         $busyRetry = ([TheaterSimple.BusyRetryFilter]::Register() -eq 0)
-    } catch { $busyRetry = $false }
+    } catch { $busyRetry = $false; $nativeHelperError = $_.Exception.Message }
     $stage = 'app'
     $powerPoint = New-Object -ComObject PowerPoint.Application
     $stage = 'open'
@@ -157,18 +172,26 @@ try {
     Reply $ready
     while ($null -ne ($line = [Console]::ReadLine())) {
         $request = $null
+        $navigationAttempted = $false
+        $navigationApplied = $false
         try {
             $request = $line | ConvertFrom-Json
             switch ($request.action) {
-                'next' { $show.View.Next() }
-                'previous' { $show.View.Previous() }
+                'next' { $navigationAttempted = $true; $show.View.Next(); $navigationApplied = $true }
+                'previous' { $navigationAttempted = $true; $show.View.Previous(); $navigationApplied = $true }
                 'focus' { $show.Activate() }
                 'status' { }
                 default { throw 'Unsupported command' }
             }
-            Reply (Retry { Position $request.id } 3000)
+            try { Reply (Retry { Position $request.id } 3000) }
+            catch {
+                # Navigation succeeded; a later position read must not imply that
+                # the click failed and invite the operator to advance again.
+                if (-not $navigationApplied) { throw }
+                Reply @{id=$request.id; positionUnknown=$true}
+            }
         } catch {
-            Reply @{id=$request.id; error='The slideshow has ended or PowerPoint is busy. Choose the file again to restart it.'}
+            Reply @{id=$request.id; error='The slideshow has ended or PowerPoint is busy. Choose the file again to restart it.'; uncertain=$navigationAttempted}
         }
     }
 } catch {

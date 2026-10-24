@@ -1,0 +1,58 @@
+name: PowerPoint QA package
+
+on:
+  push:
+    branches: [fix/powerpoint-live-readiness-20261024]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  windows-package:
+    runs-on: windows-latest
+    timeout-minutes: 45
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Download pinned runtimes and install dependencies
+        run: ./scripts/setup-windows.ps1
+
+      - name: Run automated tests and check the live harness syntax
+        run: |
+          & './runtime/node.exe' --test 'tests/*.test.mjs'
+          if ($LASTEXITCODE -ne 0) { throw 'Tests failed.' }
+          & './runtime/node.exe' --check 'tests/powerpoint-capture-live.cjs'
+          if ($LASTEXITCODE -ne 0) { throw 'PowerPoint picture test failed to parse.' }
+
+      - name: Build a test package for the licensed PC
+        run: ./scripts/build-windows.ps1 -PackageName 'Theater Simple PowerPoint QA'
+
+      - name: Check that the launcher replaces an older Theater copy
+        run: |
+          $package = (Get-Item -LiteralPath 'dist/Theater Simple PowerPoint QA').FullName
+          $other = Join-Path $env:RUNNER_TEMP 'other-theater-copy'
+          Copy-Item -LiteralPath $package -Destination $other -Recurse
+          $ownerOf43120 = { $listener = Get-NetTCPConnection -LocalPort 43120 -State Listen -ErrorAction SilentlyContinue | Select-Object -First 1; if ($listener) { (Get-CimInstance Win32_Process -Filter "ProcessId = $($listener.OwningProcess)").CommandLine } }
+          $oldServer = Start-Process -FilePath (Join-Path $other 'runtime\node.exe') -ArgumentList @('"' + (Join-Path $other 'server.mjs') + '"') -WorkingDirectory $other -WindowStyle Hidden -PassThru
+          for ($attempt = 0; $attempt -lt 40 -and -not (& $ownerOf43120); $attempt++) { Start-Sleep -Milliseconds 250 }
+          if (-not ((& $ownerOf43120) -like "*$other*")) { throw 'The other copy did not start.' }
+          & powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $package 'Start Theater.ps1') -NoBrowser
+          if ($LASTEXITCODE -ne 0) { throw 'The new launcher failed to start.' }
+          if (-not ((& $ownerOf43120) -like "*$(Join-Path $package 'server.mjs')*")) { throw 'The new copy did not take over port 43120.' }
+          if (-not $oldServer.HasExited) { throw 'The old copy is still running.' }
+          & powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $package 'Stop Theater.ps1')
+          for ($attempt = 0; $attempt -lt 20 -and (& $ownerOf43120); $attempt++) { Start-Sleep -Milliseconds 250 }
+          if (& $ownerOf43120) { throw 'The new copy did not stop.' }
+
+      - name: Upload the test package
+        uses: actions/upload-artifact@v5
+        with:
+          name: theater-simple-powerpoint-qa-${{ github.run_id }}
+          path: |
+            dist/*.zip
+            dist/*.zip.sha256
+          if-no-files-found: error
