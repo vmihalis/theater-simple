@@ -47,7 +47,7 @@ try {
                     $target = $reader.GetAttribute('Target')
                     $outsidePackage = ($targetMode -eq 'External') -or ($target -match '^[A-Za-z][A-Za-z0-9+.-]*:|^\\\\|^//')
                     if ($outsidePackage -and $type -notmatch '/hyperlink$') {
-                        throw 'This PowerPoint links to external media or data. Embed those items in PowerPoint, or save it as PDF and select that PDF here.'
+                        throw 'This PowerPoint links to external media or data. Static import stopped before opening the deck. Embed those items in PowerPoint and add the deck again, or use Play animations to present it in PowerPoint.'
                     }
                 }
             } finally {

@@ -143,6 +143,7 @@ async function refreshState() { const result = await api('/api/state'); renderSt
 
 async function showFile(file) {
   const generation = ++contentGeneration;
+  let keepContentStatus = false;
   $('content-status').hidden = false;
   $('content-status').textContent = file.type === 'powerpoint' ? `Preparing ${file.name}…` : '';
   try {
@@ -153,8 +154,16 @@ async function showFile(file) {
     }
     showPdf(file);
   } catch (error) {
-    if (generation === contentGeneration) notice(error.message || 'Could not prepare this presentation.', true);
-  } finally { if (generation === contentGeneration) $('content-status').hidden = true; }
+    if (generation === contentGeneration) {
+      const message = error.message || 'Could not prepare this presentation.';
+      if (file.type === 'powerpoint' && /links to external media or data/i.test(message)) {
+        keepContentStatus = true;
+        $('content-status').textContent = message;
+        $('window-options').open = true;
+      }
+      notice(message, true);
+    }
+  } finally { if (generation === contentGeneration) $('content-status').hidden = !keepContentStatus; }
 }
 
 function showPdf(file) {

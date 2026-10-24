@@ -25,6 +25,11 @@ CHOOSE YOUR CONTENT ONCE
   then expand Other windows and click Choose window. Select the slideshow
   picture, not the PowerPoint editing window. Click the slideshow window once
   before using a clicker; Windows sends clicker keys to the active window.
+  If Show says the deck links to external media or data, it has stopped before
+  opening the deck. Embed linked GIFs, images and videos in PowerPoint, then
+  choose the updated file again. Play animations can open the original slideshow,
+  but linked internet items still need network access and may fail during a show.
+  PDFs are static page pictures: GIF motion and online media do not play there.
   For older .ppt/.pps files, save a .pptx or PDF copy in PowerPoint first.
   If a deck links to external media or data, embed those items or export a PDF.
 - Website: Enter its address and click Show website. The desktop app opens
