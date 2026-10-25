@@ -54,10 +54,15 @@ plist="$app/Contents/Info.plist"
 /usr/libexec/PlistBuddy -c 'Set :CFBundleDisplayName Theater Simple' "$plist"
 /usr/libexec/PlistBuddy -c 'Set :CFBundleName Theater Simple' "$plist"
 /usr/libexec/PlistBuddy -c 'Set :CFBundleIdentifier com.vmihalis.theater-simple' "$plist"
-/usr/libexec/PlistBuddy -c 'Add :NSMicrophoneUsageDescription string Theater Simple uses the selected microphone for live translated captions.' "$plist"
-/usr/libexec/PlistBuddy -c 'Add :NSCameraUsageDescription string Theater Simple uses the camera only when you turn on its camera view.' "$plist"
-/usr/libexec/PlistBuddy -c 'Add :NSAppleEventsUsageDescription string Theater Simple asks PowerPoint to export selected slides as PDF.' "$plist"
-/usr/libexec/PlistBuddy -c 'Add :NSAudioCaptureUsageDescription string Theater Simple captures presentation pictures; system audio is not captured.' "$plist"
+set_usage_description() {
+  local key="$1" value="$2"
+  /usr/libexec/PlistBuddy -c "Set :$key $value" "$plist" 2>/dev/null ||
+    /usr/libexec/PlistBuddy -c "Add :$key string $value" "$plist"
+}
+set_usage_description NSMicrophoneUsageDescription 'Theater Simple uses the selected microphone for live translated captions.'
+set_usage_description NSCameraUsageDescription 'Theater Simple uses the camera only when you turn on its camera view.'
+set_usage_description NSAppleEventsUsageDescription 'Theater Simple asks PowerPoint to export selected slides as PDF.'
+set_usage_description NSAudioCaptureUsageDescription 'Theater Simple captures presentation pictures; system audio is not captured.'
 plutil -lint "$plist"
 
 # Ad-hoc signing keeps the locally testable bundle internally consistent.
