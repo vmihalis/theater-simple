@@ -38,6 +38,29 @@ jobs:
           done
           cat "$RUNNER_TEMP/theater-smoke/stderr.log"
           exit 1
+      - name: Launch the Mac app and check its local service
+        shell: bash
+        run: |
+          set -euo pipefail
+          app="dist/Theater Simple macOS Apple silicon 1.2.0-macos.1/Theater Simple.app"
+          mkdir -p "$RUNNER_TEMP/theater-app-smoke"
+          THEATER_PORT=49124 THEATER_DATA_DIR="$RUNNER_TEMP/theater-app-smoke" "$app/Contents/MacOS/Electron" > "$RUNNER_TEMP/theater-app-smoke/stdout.log" 2> "$RUNNER_TEMP/theater-app-smoke/stderr.log" &
+          pid=$!
+          trap 'kill "$pid" 2>/dev/null || true' EXIT
+          for attempt in {1..40}; do
+            if ! kill -0 "$pid" 2>/dev/null; then
+              cat "$RUNNER_TEMP/theater-app-smoke/stderr.log"
+              exit 1
+            fi
+            if curl --silent --fail http://127.0.0.1:49124/api/state | grep -q '"app":"theater-simple"'; then
+              sleep 2
+              kill -0 "$pid"
+              exit 0
+            fi
+            sleep 0.25
+          done
+          cat "$RUNNER_TEMP/theater-app-smoke/stderr.log"
+          exit 1
       - uses: actions/upload-artifact@v4
         with:
           name: Theater-Simple-macOS-Apple-silicon-qa
