@@ -1,6 +1,20 @@
 # Theater Simple
 
-A small Windows presentation app for a theater projector and hybrid Zoom events. Choose a PDF or PowerPoint once, or enter a website address, and show the content above translated captions. OBS is not required.
+A presentation app for a theater projector and hybrid Zoom events. Choose a PDF or PowerPoint once, or enter a website address, and show the content above translated captions. OBS is not required.
+
+## macOS Apple silicon test build
+
+This branch starts from the first Windows release, v1.2.0, and adds an Apple silicon Mac app. The Windows v1.2.0 release remains unchanged. Extract the macOS ZIP, open **Theater Simple.app**, and follow **START HERE Mac.txt**. The Mac build is ad-hoc signed and is not yet notarized; macOS may require **System Settings → Privacy & Security → Open Anyway** after the first launch attempt. Grant microphone, Screen Recording, camera, and PowerPoint Automation permissions only when using those features. [Apple explains the Open Anyway flow](https://support.apple.com/en-us/102445).
+
+PDFs and websites use the same display and caption code as the Windows app. Direct `.pptx` and `.ppsx` import asks installed, activated Microsoft PowerPoint for Mac to export static PDF slides through AppleScript. This Office automation path needs a real test on the destination Mac. If it fails, export the deck as PDF in PowerPoint and select that PDF. For animations, run the slideshow in PowerPoint and capture its window under **Other windows**. Use an extended projector display, then share the **Theater Simple · Projector** window in Zoom.
+
+To build on an Apple silicon Mac with Node.js 24.19.0 and npm:
+
+```bash
+bash scripts/build-macos.sh
+```
+
+The script downloads and verifies the pinned official Electron 44.9.0 arm64 archive, installs locked dependencies, runs tests, bundles the app, signs it ad hoc, and writes a ZIP plus SHA-256 checksum in `dist/`. The GitHub Actions macOS workflow performs the same build and checks the bundled local server. Production distribution will require Developer ID signing and notarization.
 
 ## Windows quickstart
 

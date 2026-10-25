@@ -1,0 +1,32 @@
+THEATER SIMPLE - APPLE SILICON MAC TEST BUILD
+
+1. Extract the ZIP. Open Theater Simple.app in the extracted folder. You may
+   move the app to Applications after testing. Do not run it from inside the ZIP.
+2. This is an ad-hoc signed test build, not an Apple-notarized release. If
+   macOS blocks it, try opening it once, then go to System Settings > Privacy
+   & Security > Open Anyway. Only do this for the ZIP from this project's
+   GitHub release and after checking its SHA-256 checksum.
+3. If prompted, allow microphone access for translated captions. To capture
+   another app's window, allow Screen Recording in System Settings > Privacy
+   & Security and restart Theater Simple. Optional camera use needs Camera
+   permission. Direct PowerPoint import may ask permission to control Microsoft
+   PowerPoint under Privacy & Security > Automation.
+4. Set the projector as an extended display in System Settings > Displays.
+   Click Open projector in Theater Simple, move that window to the projector,
+   and click Full screen.
+5. Choose a PDF or .pptx/.ppsx once, or enter a website. Direct PowerPoint
+   import needs installed and activated Microsoft PowerPoint on this Mac. It
+   converts to static PDF pages: animations, GIF motion, video and audio are
+   not preserved. If import fails, open the deck in PowerPoint, save it as PDF,
+   and select that PDF.
+6. For an animated deck, start its slideshow in PowerPoint. In Theater Simple,
+   expand Other windows, click Choose window, and select the actual slideshow.
+   Keep the slideshow open and unminimized. The clicker goes to whichever Mac
+   window has focus; click the PowerPoint slideshow before using it.
+7. Choose the speaker microphone, enter your Soniox key, select the direction,
+   and start captions. In Zoom, share the Theater Simple - Projector window so
+   remote attendees see the same picture and caption strip.
+
+This build needs a rehearsal on the destination Mac before an event. Check PDF,
+PowerPoint, website, projector, Zoom, microphone, both caption directions, and
+the clicker. Quit Theater Simple to stop its local service.

@@ -252,7 +252,7 @@ $('choose-source').addEventListener('click', async () => {
   choosingSource = true; updateButtons();
   let selected;
   try {
-    if (!navigator.mediaDevices?.getDisplayMedia) throw new Error('Open Theater Simple in current Microsoft Edge or Chrome on this PC.');
+    if (!navigator.mediaDevices?.getDisplayMedia) throw new Error('Open Theater Simple in the desktop app, or a current Chrome or Edge browser on this computer.');
     selected = await navigator.mediaDevices.getDisplayMedia({ video: { displaySurface: 'window', frameRate: { ideal: 30, max: 30 } }, audio: false, selfBrowserSurface: 'exclude', surfaceSwitching: 'exclude', systemAudio: 'exclude' });
     if (generation !== sourceGeneration) { stopTracks(selected); return; }
     const track = selected.getVideoTracks()[0];
@@ -293,7 +293,7 @@ async function listInputs(kind, selectId, defaultLabel) {
   if (Array.from(select.options).some(option => option.value === previous)) select.value = previous;
 }
 $('refresh-microphones').addEventListener('click', event => withButton(event.currentTarget, async () => {
-  if (!navigator.mediaDevices?.getUserMedia) throw new Error('Microphone access needs current Edge or Chrome on localhost.');
+  if (!navigator.mediaDevices?.getUserMedia) throw new Error('Microphone access needs the desktop app or a current browser on localhost.');
   const permissionStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
   stopTracks(permissionStream);
   await listInputs('audioinput', 'microphone-device', 'System default microphone');

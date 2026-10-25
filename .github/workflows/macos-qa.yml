@@ -1,0 +1,47 @@
+name: macOS Apple silicon QA
+
+on:
+  push:
+    branches: [port/macos-from-v1.2.0]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  package:
+    runs-on: macos-15
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24.19.0
+          cache: npm
+      - name: Build verified Mac package
+        run: bash scripts/build-macos.sh
+      - name: Check bundled server on the Mac runtime
+        shell: bash
+        run: |
+          set -euo pipefail
+          app="dist/Theater Simple macOS Apple silicon 1.2.0-macos.1/Theater Simple.app"
+          root="$app/Contents/Resources/app"
+          mkdir -p "$RUNNER_TEMP/theater-smoke"
+          THEATER_PORT=49123 THEATER_DATA_DIR="$RUNNER_TEMP/theater-smoke" ELECTRON_RUN_AS_NODE=1 "$app/Contents/MacOS/Electron" "$root/server.mjs" > "$RUNNER_TEMP/theater-smoke/stdout.log" 2> "$RUNNER_TEMP/theater-smoke/stderr.log" &
+          pid=$!
+          trap 'kill "$pid" 2>/dev/null || true' EXIT
+          for attempt in {1..40}; do
+            if curl --silent --fail http://127.0.0.1:49123/api/state | grep -q '"app":"theater-simple"'; then
+              exit 0
+            fi
+            sleep 0.25
+          done
+          cat "$RUNNER_TEMP/theater-smoke/stderr.log"
+          exit 1
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Theater-Simple-macOS-Apple-silicon-qa
+          path: |
+            dist/Theater Simple macOS Apple silicon 1.2.0-macos.1.zip
+            dist/Theater Simple macOS Apple silicon 1.2.0-macos.1.zip.sha256
+          if-no-files-found: error

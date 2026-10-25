@@ -85,9 +85,11 @@ const server=http.createServer(async(req,res)=>{
           return json(res,{file:{...publicFile(file),presentationUrl:`/slides/${encodeURIComponent(file.id)}`}});
         }
         case '/api/open-desktop': {
-          const executable=path.join(root,'runtime','electron','electron.exe');
-          if(!fs.existsSync(executable))throw new Error('Use the latest desktop package to open websites automatically.');
-          const child=spawn(executable,[path.join(root,'desktop')],{cwd:root,windowsHide:true,detached:true,stdio:'ignore'});
+          const macApp=path.resolve(root,'../../..');
+          const isMacBundle=process.platform==='darwin'&&macApp.endsWith('.app')&&fs.existsSync(path.join(macApp,'Contents','Info.plist'));
+          const executable=isMacBundle?'/usr/bin/open':path.join(root,'runtime','electron','electron.exe');
+          if(!fs.existsSync(executable))throw new Error('Open the Theater Simple desktop package to show websites automatically.');
+          const child=spawn(executable,isMacBundle?['-a',macApp]:[path.join(root,'desktop')],{cwd:root,windowsHide:true,detached:true,stdio:'ignore'});
           await new Promise((resolve,reject)=>{child.once('spawn',resolve);child.once('error',()=>reject(new Error('The desktop app could not open. Run Start Theater.cmd.')));});
           child.unref();break;
         }
@@ -107,7 +109,8 @@ const server=http.createServer(async(req,res)=>{
           const file=config.files.find(f=>f.id===data.id);if(!file||!fs.existsSync(path.join(uploads,file.filename)))throw new Error('Presentation not found. Add the file again.');
           if(file.type==='pdf')throw new Error('Open this PDF using its browser link.');
           await new Promise((resolve,reject)=>{
-            const child=spawn('powershell.exe',['-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass','-File',path.join(root,'open-presentation.ps1'),'-PresentationPath',path.join(uploads,file.filename)],{windowsHide:true});
+            const mac=process.platform==='darwin';
+            const child=mac?spawn('/usr/bin/open',['-a','Microsoft PowerPoint',path.join(uploads,file.filename)]):spawn('powershell.exe',['-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass','-File',path.join(root,'open-presentation.ps1'),'-PresentationPath',path.join(uploads,file.filename)],{windowsHide:true});
             const timeout=setTimeout(()=>{child.kill();reject(new Error('PowerPoint did not open in time. Open the file manually, then choose its window.'));},25000);
             child.on('error',()=>{clearTimeout(timeout);reject(new Error('Cannot open PowerPoint. Install and activate PowerPoint, or open the file in your presentation app.'));});
             child.on('exit',code=>{clearTimeout(timeout);code===0?resolve():reject(new Error('PowerPoint could not open the deck. Check that PowerPoint is installed and activated, or open the file manually.'));});

@@ -3,15 +3,18 @@ const { app, BrowserWindow, desktopCapturer, dialog, ipcMain, session } = requir
 const path = require('node:path');
 const fs = require('node:fs');
 const { pathToFileURL } = require('node:url');
+const { spawn } = require('node:child_process');
 
 const base = new URL(process.env.THEATER_DESKTOP_URL || `http://127.0.0.1:${process.env.THEATER_PORT || '43120'}/`);
 if (base.protocol !== 'http:' || base.hostname !== '127.0.0.1' || base.username || base.password || !base.port) throw new Error('Theater desktop requires a loopback HTTP service with an explicit port.');
 base.pathname = '/'; base.search = ''; base.hash = '';
 const origin = base.origin;
-const profilePath = path.resolve(process.env.THEATER_DATA_DIR || path.resolve(__dirname, '../data'), 'desktop-profile');
+app.setName('Theater Simple');
+const dataRoot = path.resolve(process.env.THEATER_DATA_DIR || (process.platform === 'darwin' ? path.join(app.getPath('appData'), 'Theater Simple') : path.resolve(__dirname, '../data')));
+process.env.THEATER_DATA_DIR = dataRoot;
+const profilePath = path.join(dataRoot, 'desktop-profile');
 fs.mkdirSync(profilePath, { recursive: true });
 app.setPath('userData', profilePath);
-app.setName('Theater Simple');
 
 let control;
 let website;
@@ -19,6 +22,7 @@ let websiteGeneration = 0;
 let pendingWebsite = null;
 let picker = null;
 let quitting = false;
+let macServer = null;
 const projectors = new Set();
 const pickerURL = pathToFileURL(path.join(__dirname, 'source-picker.html')).href;
 
@@ -190,10 +194,43 @@ async function createControl() {
   catch { dialog.showErrorBox('Theater Simple', 'The local presentation service is not ready. Close this window and open Start Theater.cmd again.'); app.quit(); }
 }
 
+async function startMacServer() {
+  const serverPath = path.resolve(__dirname, '../server.mjs');
+  const ping = async () => {
+    try {
+      const response = await fetch(new URL('/api/state', origin), { signal: AbortSignal.timeout(700) });
+      const state = await response.json();
+      if (state?.app !== 'theater-simple') throw new Error('Another application is using Theater Simple’s port 43120.');
+      return true;
+    } catch (error) {
+      if (error.message.includes('Another application')) throw error;
+      return false;
+    }
+  };
+  if (await ping()) return;
+  const output = fs.openSync(path.join(dataRoot, 'server.log'), 'a');
+  const errors = fs.openSync(path.join(dataRoot, 'server-error.log'), 'a');
+  try {
+    macServer = spawn(process.execPath, [serverPath], {
+      cwd: path.dirname(serverPath),
+      env: { ...process.env, ELECTRON_RUN_AS_NODE: '1' },
+      stdio: ['ignore', output, errors],
+    });
+  } finally { fs.closeSync(output); fs.closeSync(errors); }
+  let spawnError;
+  macServer.once('error', error => { spawnError = error; });
+  for (let attempt = 0; attempt < 50; attempt++) {
+    if (spawnError || macServer.exitCode !== null) break;
+    if (await ping()) return;
+    await new Promise(resolve => setTimeout(resolve, 200));
+  }
+  throw new Error('The local presentation service could not start. Check server-error.log in Library/Application Support/Theater Simple.');
+}
+
 if (!app.requestSingleInstanceLock({ origin })) app.quit();
 else {
   app.on('second-instance', () => { if (control && !control.isDestroyed()) { if (control.isMinimized()) control.restore(); control.show(); control.focus(); } });
-  app.on('before-quit', () => { if (quitting) return; quitting = true; rejectPicker(); closeWebsite(); for (const win of projectors) if (!win.isDestroyed()) win.destroy(); });
+  app.on('before-quit', () => { if (quitting) return; quitting = true; rejectPicker(); closeWebsite(); for (const win of projectors) if (!win.isDestroyed()) win.destroy(); macServer?.kill(); });
   app.on('window-all-closed', () => app.quit());
-  app.whenReady().then(createControl).catch(error => { dialog.showErrorBox('Theater Simple', error.message); app.quit(); });
+  app.whenReady().then(async () => { if (process.platform === 'darwin') await startMacServer(); await createControl(); }).catch(error => { dialog.showErrorBox('Theater Simple', error.message); app.quit(); });
 }

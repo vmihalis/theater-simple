@@ -1,9 +1,11 @@
 {
   "name": "theater-simple",
-  "version": "1.2.0",
+  "version": "1.2.0-macos.1",
   "private": true,
   "type": "module",
-  "description": "Portable Windows presentation and translated-caption control, without OBS",
+  "main": "desktop/main.cjs",
+  "productName": "Theater Simple",
+  "description": "Presentation and translated-caption control for Windows and macOS, without OBS",
   "license": "MIT",
   "repository": {"type": "git", "url": "https://github.com/vmihalis/theater-simple.git"},
   "engines": {"node": ">=24.19.0"},
